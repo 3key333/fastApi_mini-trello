@@ -1,0 +1,110 @@
+# ============================
+# 1. ВИРТУАЛЬНОЕ ОКРУЖЕНИЕ
+# ============================
+venv/
+env/
+.env/
+.venv
+venv.bak/
+pythonenv*
+
+# ============================
+# 2. ФАЙЛЫ PYTHON (мусор)
+# ============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+*.egg-info/
+*.egg
+dist/
+build/
+develop-eggs/
+downloads/
+eggs/
+parts/
+sdist/
+var/
+wheels/
+*.manifest
+*.spec
+
+# ============================
+# 3. IDE И РЕДАКТОРЫ
+# ============================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.vscode/
+*.iml
+.project
+.pydevproject
+.settings/
+
+# ============================
+# 4. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ (СЕКРЕТЫ!) — ОЧЕНЬ ВАЖНО
+# ============================
+.env
+.env.local
+.env.*.local
+.secrets
+config.ini
+credentials.json
+*.pem
+*.key
+*.crt
+
+# ============================
+# 5. БАЗЫ ДАННЫХ (локальные файлы)
+# ============================
+*.db
+*.sqlite
+*.sqlite3
+postgresql.db
+data.db
+
+# ============================
+# 6. ЛОГИ И ВРЕМЕННЫЕ ФАЙЛЫ
+# ============================
+logs/
+*.log
+*.tmp
+*.temp
+*.cache
+*.pid
+*.seed
+*.pid.lock
+
+# ============================
+# 7. DOCKER (если используете)
+# ============================
+docker-compose.override.yml
+.dockerignore
+*.tar.gz
+
+# ============================
+# 8. ТЕСТЫ И ПОКРЫТИЕ
+# ============================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# ============================
+# 9. РАЗНОЕ (OS)
+# ============================
+Thumbs.db
+desktop.ini
+*.bak
+*.swp
+~$*

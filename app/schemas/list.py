@@ -1,0 +1,16 @@
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field
+
+class ListCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+
+
+class ListRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    position: int
+    board_id: str
+    created_at: datetime
+    
