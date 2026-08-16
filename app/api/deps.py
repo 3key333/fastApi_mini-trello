@@ -1,24 +1,31 @@
 # Общие зависимости FastAPI: «дай сессию БД», "дай текущего пользователя из JWT"
 
 from collections.abc import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import AsyncSessionLocal
-from fastapi import Depends
-from sqlalchemy import select
-from app.models.user import User
 
-DEMO_EMAIL = "demo@email.com"
+from authx import TokenPayload
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.user import User
+from app.core.database import AsyncSessionLocal
+from app.core.security import auth
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
-async def get_demo_owner_id(db: AsyncSession = Depends(get_db)) -> str:
-    result = await db.execute(select(User).where(User.email == DEMO_EMAIL))
-    user = result.scalar_one_or_none()
+async def get_current_user(
+    payload: TokenPayload = Depends(auth.access_token_required),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    # payload.sub — то, что положили в create_access_token(uuid=user.id)
+    user = await db.get(User, payload.sub)
     if user is None:
-        user = User(email=DEMO_EMAIL, hashed_password="dev-only-not-a-hash")
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    return user.id
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    return user

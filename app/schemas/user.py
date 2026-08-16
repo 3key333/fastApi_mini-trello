@@ -14,3 +14,6 @@ class UserRead(BaseModel):
     email: EmailStr
     created_at: datetime
     
+class TokenRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
