@@ -17,3 +17,9 @@ class CardRead(BaseModel):
     list_id: str
     created_at: datetime
 
+
+class CardUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+
+    
