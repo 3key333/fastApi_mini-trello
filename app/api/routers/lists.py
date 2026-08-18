@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_owned_board, get_owned_list
 from app.models.board import Board
 from app.models.list import BoardList
 from app.schemas.list import ListCreate, ListRead, ListUpdate
+from app.services import list as list_service
 
 
 router = APIRouter(tags=["lists"])
@@ -17,37 +17,20 @@ async def create_list(
     board_id: str, 
     payload: ListCreate, 
     db: AsyncSession = Depends(get_db),
-    board: Board = Depends(get_owned_board)
+    board: Board = Depends(get_owned_board),
 ) -> BoardList:
-    result = await db.execute(
-        select(func.count())
-        .select_from(BoardList)
-        .where(BoardList.board_id == board.id)
-    )
-    position = result.scalar_one()
-    board_list = BoardList(
-        title=payload.title,
-        board_id=board.id,
-        position=position
-    )
-    db.add(board_list)
-    await db.commit()
-    await db.refresh(board_list)
-    return board_list
+    # get_owned_board гарантирует, что доска принадлежит текущему пользователю
+    return await list_service.create_list(db=db, board_id=board.id, title=payload.title)
 
 
 @router.get("/boards/{board_id}/lists", response_model=list[ListRead])
 async def get_all_lists(
     board_id: str,
     db: AsyncSession = Depends(get_db),
-    board: Board = Depends(get_owned_board)
+    board: Board = Depends(get_owned_board),
 ) -> list[BoardList]:
-    result = await db.execute(
-        select(BoardList)
-        .where(BoardList.board_id == board.id)
-        .order_by(BoardList.position.asc())
-    )
-    return list(result.scalars().all())
+    # get_owned_board гарантирует, что текущий пользователь видит только свои доски
+    return await list_service.list_lists(db, board_id=board.id)
 
 
 @router.patch("/lists/{list_id}", response_model=ListRead)
@@ -56,12 +39,17 @@ async def update_list(
     db: AsyncSession = Depends(get_db),
     board_list: BoardList = Depends(get_owned_list)
 ) -> BoardList:
-    data = payload.model_dump(exclude_unset=True)
-    for field, value in data.items():
-        setattr(board_list, field, value)
-    await db.commit()
-    await db.refresh(board_list)
-    return board_list
+    updated = await list_service.update_list(
+        db=db, 
+        list_id=board_list.id, 
+        data=payload.model_dump(exclude_unset=True)
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="List not found",
+        )
+    return updated
 
 
 @router.delete("/lists/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -69,5 +57,10 @@ async def delete_list(
     db: AsyncSession = Depends(get_db), 
     board_list: BoardList = Depends(get_owned_list)
 ) -> None:
-    await db.delete(board_list)
-    await db.commit()
+    deleted = await list_service.delete_list(db=db, list_id=board_list.id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="List not found",
+        )
+    return None
