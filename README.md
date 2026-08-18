@@ -36,7 +36,7 @@ HTTP
 | `schemas/` | какой JSON принимаем и отдаём | Create / Read, Field, EmailStr | SQL, `hashed_password` в ответе |
 | `api/routers/` | какие URL существуют | хендлеры, 201/404 | настройки, создание engine |
 | `api/deps.py` | что подставить в хендлер до вызова | `get_db`, auth | бизнес-правила доски |
-| `services/` | бизнес-логика без HTTP | (пока пусто) | декораторы `@router` |
+| `services/` | бизнес-логика без HTTP | SQL-запросы и правила CRUD | декораторы `@router`, HTTPException |
 | `main.py` | сборка приложения | FastAPI(), include_router, lifespan | CRUD досок |
 
 Аналог Nest: `core` ≈ ConfigModule + DataSource, `models` ≈ Entity, `schemas` ≈ DTO, `routers` ≈ Controller, `deps` ≈ Guard / Inject, `services` ≈ Service.
@@ -80,15 +80,21 @@ mini_trello_backend/
     │   ├── list.py             ListCreate / ListRead
     │   └── card.py             CardCreate / CardRead
     │
-    ├── services/               бизнес-логика (просто код внутри ендпоинтов с БД). Пока не используем: SQL живёт в роутерах
-    │   └── __init__.py
+    ├── services/               бизнес-логика без HTTP-слоя
+    │   ├── __init__.py
+    │   ├── board.py            CRUD-логика досок
+    │   ├── list.py             CRUD-логика списков
+    │   └── cards.py            CRUD-логика карточек
     │
     └── api/                    HTTP-слой
         ├── __init__.py
-        ├── deps.py             Depends: сессия БД, временный demo-владелец доски
+        ├── deps.py             Depends: сессия БД, текущий пользователь и ownership-проверки
         └── routers/
             ├── __init__.py
-            └── boards.py       POST/GET /boards, GET /boards/{id}
+            ├── auth.py         регистрация, логин, /auth/me
+            ├── boards.py       CRUD для досок
+            ├── lists.py        CRUD для списков
+            └── cards.py        CRUD для карточек
 ```
 
 Пустой `__init__.py` — не мусор, а метка пакета. Исключение: `app/models/__init__.py` не пустой, там реэкспорт моделей.
@@ -120,7 +126,7 @@ mini_trello_backend/
 - `FastAPI(title=..., lifespan=...)` — объект приложения, его импортирует uvicorn (`app.main:app`)
 - `lifespan` — код до старта и после остановки. Сейчас: `Base.metadata.create_all`
 - `import app.models` — побочный эффект: модели регистрируются на `Base`. Без этого на пустой БД не будет таблиц `lists`/`cards`, если их никто не импортировал
-- `include_router(boards.router)` — подключить URL из файла. Файл роутера сам по себе эндпоинты не публикует
+- `include_router(...)` — подключить URL из файла роутера. Файл роутера сам по себе эндпоинты не публикует
 - `GET /health` — жив ли процесс. Не про доски, поэтому лежит здесь
 
 ---
@@ -190,37 +196,34 @@ User 1 ──< Board 1 ──< BoardList 1 ──< Card
 Общие зависимости. Хендлер пишет `db: AsyncSession = Depends(get_db)` — FastAPI вызовет функцию, подставит результат.
 
 - `get_db` — открыть сессию, `yield`, закрыть даже при ошибке (`async with`)
-- `get_demo_owner_id` — **временная заглушка**. Берёт/создаёт юзера `demo@email.com`, чтобы у Board был валидный `owner_id`. Пароль не хеш. Заменить на JWT
+- `get_current_user` — читает JWT (`Authorization: Bearer ...`), достаёт пользователя из БД
+- `get_owned_board` / `get_owned_list` / `get_owned_card` — проверяют, что сущность принадлежит текущему пользователю
 
 `Depends(get_db)` внутри другой Depends: на один запрос сессия одна и та же.
 
 ---
 
-### `app/api/routers/boards.py`
+### `app/api/routers/*`
 
-Контроллер досок.
+Контроллеры (`auth`, `boards`, `lists`, `cards`).
 
 - `APIRouter(prefix="/boards", tags=["boards"])` — все пути с `/boards`, в Swagger группа
 - `POST ""` + prefix = `POST /boards`. Не дублировать `/boards` в декораторе
 - `GET ""` держать **выше** `GET /{board_id}`
 - `payload: BoardCreate` — вход
 - `response_model=BoardRead` — выход в JSON
-- `db.add` → `await db.commit()` → `await db.refresh(board)`  
-  add = запомнить, commit = INSERT, refresh = добрать `created_at` с сервера
-- `await db.get(Board, id)` — поиск по PK. Без `await` получится корутина, 404 сломается
-- нет строки → `HTTPException(404)`. FastAPI сам это не угадает
-- ошибка **после** commit: клиенту 500, строка в БД уже есть
+- SQL вынесен в `services/*`; роутеры делают только `Depends`, валидацию входа и HTTP-ответ
+- для отсутствующей/чужой сущности роутер возвращает `HTTPException(404)`
+- для удаления используется `204 No Content` (без тела ответа)
 
 Подключение только через `app.include_router` в `main.py`.
-
-Роутеров `lists` / `cards` / `auth` ещё нет.
 
 ---
 
 ### `app/services/`
 
-Сюда позже вынести логику из роутеров («можно ли двигать карточку», «посчитать position»).  
-Роутер останется про HTTP, сервис — про правила. Сейчас SQL в роутере — так и задумано для первого CRUD.
+Сервисы уже используются в `boards`, `lists`, `cards`.  
+Паттерн: сервис возвращает `model | None` / `bool`, а роутер решает, какой HTTP-код вернуть (`404`, `204` и т.д.).
 
 ---
 
@@ -235,8 +238,8 @@ User 1 ──< Board 1 ──< BoardList 1 ──< Card
 1. Клиент: `{"title": "Моя доска"}`
 2. FastAPI собирает `BoardCreate`, проверяет длину title
 3. `get_db` открывает сессию
-4. `get_demo_owner_id` находит или создаёт demo-юзера, возвращает uuid
-5. Хендлер: `Board(title=..., owner_id=...)` → add → commit → refresh
+4. `get_current_user` проверяет JWT и отдаёт текущего пользователя
+5. Роутер вызывает `services.board.create_board(...)`
 6. `return board` (ORM)
 7. `response_model=BoardRead` + `from_attributes` → JSON `{ id, title, owner_id, created_at }`
 8. сессия закрывается
@@ -258,8 +261,8 @@ User 1 ──< Board 1 ──< BoardList 1 ──< Card
 
 ## Что уже есть / чего нет
 
-**Есть:** каркас, модели четырёх сущностей, схемы, CRUD досок (создать / список / одна), demo-владелец, Swagger.
+**Есть:** каркас, модели четырёх сущностей, схемы, JWT auth (`register/login/me`), CRUD для `boards/lists/cards`, сервисный слой, Swagger.
 
-**Временно:** `get_demo_owner_id`, `create_all` вместо миграций, `echo=True`, пароль demo не хешируется.
+**Временно:** `create_all` вместо миграций, `echo=True`, ручное тестирование через Swagger (без pytest).
 
-**Дальше по плану:** роутеры lists/cards, регистрация + JWT вместо demo, сервисы, Alembic, pytest, Postgres, Redis/WebSocket.
+**Дальше по плану:** Alembic, pytest, перестановка `position` при reorder/delete, Postgres, Redis/WebSocket.
