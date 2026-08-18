@@ -80,7 +80,7 @@ mini_trello_backend/
     │   ├── list.py             ListCreate / ListRead
     │   └── card.py             CardCreate / CardRead
     │
-    ├── services/               бизнес-логика. Пока не используем: SQL живёт в роутерах
+    ├── services/               бизнес-логика (просто код внутри ендпоинтов с БД). Пока не используем: SQL живёт в роутерах
     │   └── __init__.py
     │
     └── api/                    HTTP-слой
