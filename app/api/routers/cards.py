@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_owned_card, get_owned_list
+from app.api.deps import get_db, get_owned_card, get_owned_list, get_current_user
 from app.models.card import Card
 from app.models.list import BoardList
-from app.schemas.card import CardCreate, CardRead, CardUpdate
+from app.models.user import User
+from app.schemas.card import CardCreate, CardRead, CardUpdate, CardMove
 from app.services import cards as cards_service
 
 
@@ -67,5 +68,28 @@ async def delete_card(
             detail="Card not found",
         )
     return None
+
+
+@router.patch("/cards/{card_id}/move", response_model=CardRead)
+async def move_card(
+    payload: CardMove,
+    db: AsyncSession = Depends(get_db), 
+    card: Card = Depends(get_owned_card),   
+    current_user: User = Depends(get_current_user)
+) -> Card:
+    moved = await cards_service.move_card(
+        db=db,
+        card_id=card.id,
+        new_position=payload.position,
+        target_list_id=payload.list_id,  # может быть None
+        owner_id=current_user.id,
+    )
+    if moved is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Card not found"
+        )
+    return moved
+
 
 

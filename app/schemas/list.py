@@ -18,3 +18,6 @@ class ListRead(BaseModel):
 class ListUpdate(BaseModel): 
     title: str | None = Field(default=None, min_length=1, max_length=255)
     
+
+class ListMove(BaseModel):
+    position: int = Field(ge=0)

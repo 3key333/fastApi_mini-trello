@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_owned_board, get_owned_list
 from app.models.board import Board
 from app.models.list import BoardList
-from app.schemas.list import ListCreate, ListRead, ListUpdate
+from app.schemas.list import ListCreate, ListRead, ListUpdate, ListMove
 from app.services import list as list_service
 
 
@@ -64,3 +64,22 @@ async def delete_list(
             detail="List not found",
         )
     return None
+
+
+@router.patch("/lists/{list_id}/move", response_model=ListRead)
+async def move_list(
+    payload: ListMove,
+    db: AsyncSession = Depends(get_db),
+    board_list: BoardList = Depends(get_owned_list)
+) -> BoardList:
+    moved = await list_service.move_list(
+        db=db,
+        new_position=payload.position,
+        list_id=board_list.id
+    )
+    if moved is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="list not found"
+        )
+    return moved
