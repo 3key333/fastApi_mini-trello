@@ -90,3 +90,30 @@ async def test_move_card(auth_client):
     cards = await auth_client.get(f"/lists/{list_id}/cards")
     titles = [c["title"] for c in cards.json()]
     assert titles == ["C", "A", "B"]
+
+
+@pytest.mark.asyncio
+async def test_move_card_to_another_list(auth_client):
+    board = await auth_client.post("/boards", json={"title": "Board"})
+    board_id = board.json()["id"]
+
+    list_a = await auth_client.post(f"/boards/{board_id}/lists", json={"title": "A"})
+    list_b = await auth_client.post(f"/boards/{board_id}/lists", json={"title": "B"})
+    list_a_id = list_a.json()["id"]
+    list_b_id = list_b.json()["id"]
+
+    card = await auth_client.post(f"/lists/{list_a_id}/cards", json={"title": "Task"})
+    card_id = card.json()["id"]
+
+    # перенос A → B на позицию 0
+    response = await auth_client.patch(
+        f"/cards/{card_id}/move",
+        json={"position": 0, "list_id": list_b_id},
+    )
+    assert response.status_code == 200
+    assert response.json()["list_id"] == list_b_id
+    assert response.json()["position"] == 0
+
+    # в A пусто, в B одна карточка
+    assert len((await auth_client.get(f"/lists/{list_a_id}/cards")).json()) == 0
+    assert len((await auth_client.get(f"/lists/{list_b_id}/cards")).json()) == 1

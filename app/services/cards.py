@@ -56,32 +56,61 @@ async def delete_card(db: AsyncSession, *, card_id: str) -> bool:
     await db.commit()
     return True
 
-async def move_card(db: AsyncSession, *, card_id: str, new_position) -> Card | None:
+
+def _renumber(cards: list[Card]) -> None:
+    for index, c in enumerate(cards):
+        c.position = index
+
+
+async def move_card(
+    db: AsyncSession,
+    *,
+    card_id: str,
+    new_position: int,
+    target_list_id: str | None = None,
+    owner_id: str,
+) -> Card | None:
+    from app.models.board import Board
+    from app.models.list import BoardList
+
     card = await db.get(Card, card_id)
     if card is None:
         return None
-    
-    # все карточки этого списка по порядку
+
+    dest_list_id = target_list_id or card.list_id
+
+    dest_list = await db.get(BoardList, dest_list_id)
+    if dest_list is None:
+        return None
+        
+    board = await db.get(Board, dest_list.board_id)
+    if board is None or board.owner_id != owner_id:
+        return None
+
+    # убрать из старого списка
     result = await db.execute(
         select(Card)
         .where(Card.list_id == card.list_id)
         .order_by(Card.position.asc())
     )
-    cards = list(result.scalars().all())
+    old_cards = [c for c in result.scalars().all() if c.id != card.id]
+    _renumber(old_cards)
 
-    # убираем перемещаемую из списка
-    cards = [c for c in cards if c.id != card.id]
+    # вставить в целевой список
+    card.list_id = dest_list_id
 
-    # если попросили позицию дальше конца - ставим в конец
-    if new_position > len(cards):
-        new_position = len(cards)
+    result = await db.execute(
+        select(Card)
+        .where(Card.list_id == dest_list_id, Card.id != card.id)
+        .order_by(Card.position.asc())
+    )
+    new_cards = list(result.scalars().all())
 
-    # вставляем на нужное место
-    cards.insert(new_position, card)
+    if new_position > len(new_cards):
+        new_position = len(new_cards)
 
-    #перенумировываем
-    for index, c in enumerate(cards):
-        c.position = index
+    new_cards.insert(new_position, card)
+    _renumber(new_cards)
 
     await db.commit()
     await db.refresh(card)
