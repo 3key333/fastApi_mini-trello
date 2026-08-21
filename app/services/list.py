@@ -56,10 +56,45 @@ async def update_list(
     return board_list
 
 
-async def delete_list(db: AsyncSession, list_id: str) -> bool:
+async def delete_list(db: AsyncSession, *, list_id: str) -> bool:
     board_list = await db.get(BoardList, list_id)
     if board_list is None:
         return False
     await db.delete(board_list)
     await db.commit()
     return True
+
+
+async def move_list(
+    db: AsyncSession, 
+    *, 
+    list_id: str, 
+    new_position: int
+) -> BoardList | None:
+    board_list = await db.get(BoardList, list_id)
+    if board_list is None:
+        return None
+    
+    # Все списки этой доски по порядку
+    result = await db.execute(
+        select(BoardList)
+        .where(BoardList.board_id == board_list.board_id)
+        .order_by(BoardList.position.asc())
+    )
+    lists = list(result.scalars().all())
+
+    # убираем перемещаемый
+    lists = [item for item in lists if item.id != board_list.id]
+
+    if new_position > len(lists):
+        new_position = len(lists)
+
+    lists.insert(new_position, board_list)
+    for index, item in enumerate(lists):
+        item.position = index
+    
+    await db.commit()
+    await db.refresh(board_list)
+    return board_list
+
+    

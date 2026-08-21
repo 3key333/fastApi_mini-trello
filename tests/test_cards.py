@@ -66,3 +66,27 @@ async def test_delete_card(auth_client):
 
     cards = await auth_client.get(f"/lists/{list_id}/cards")
     assert len(cards.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_move_card(auth_client):
+    board = await auth_client.post("/boards", json={"title": "Board"})
+    board_id = board.json()["id"]
+    lst = await auth_client.post(f"/boards/{board_id}/lists", json={"title": "To Do"})
+    list_id = lst.json()["id"]
+    
+    c1 = await auth_client.post(f"/lists/{list_id}/cards", json={"title": "A"})
+    c2 = await auth_client.post(f"/lists/{list_id}/cards", json={"title": "B"})
+    c3 = await auth_client.post(f"/lists/{list_id}/cards", json={"title": "C"})
+
+    # было: A=0, B=1, C=2 → двигаем C на позицию 0
+    response = await auth_client.patch(
+        f"/cards/{c3.json()["id"]}/move",
+        json={"position": 0}
+    )
+    assert response.status_code == 200
+    assert response.json()["position"] == 0
+
+    cards = await auth_client.get(f"/lists/{list_id}/cards")
+    titles = [c["title"] for c in cards.json()]
+    assert titles == ["C", "A", "B"]

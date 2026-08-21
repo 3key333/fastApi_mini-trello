@@ -55,3 +55,34 @@ async def delete_card(db: AsyncSession, *, card_id: str) -> bool:
     await db.delete(card)
     await db.commit()
     return True
+
+async def move_card(db: AsyncSession, *, card_id: str, new_position) -> Card | None:
+    card = await db.get(Card, card_id)
+    if card is None:
+        return None
+    
+    # все карточки этого списка по порядку
+    result = await db.execute(
+        select(Card)
+        .where(Card.list_id == card.list_id)
+        .order_by(Card.position.asc())
+    )
+    cards = list(result.scalars().all())
+
+    # убираем перемещаемую из списка
+    cards = [c for c in cards if c.id != card.id]
+
+    # если попросили позицию дальше конца - ставим в конец
+    if new_position > len(cards):
+        new_position = len(cards)
+
+    # вставляем на нужное место
+    cards.insert(new_position, card)
+
+    #перенумировываем
+    for index, c in enumerate(cards):
+        c.position = index
+
+    await db.commit()
+    await db.refresh(card)
+    return card
